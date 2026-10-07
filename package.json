@@ -4,7 +4,8 @@
   "description": "Distributeur automatique de tickets WiFi (codes du portail captif) avec paiement FlexPay",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "build": "echo \"Aucune étape de build nécessaire\""
   },
   "engines": {
     "node": ">=18"
