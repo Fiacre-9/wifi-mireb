@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ticket WiFi</title>
+<style>
+  :root { --bg:#0f172a; --card:#fff; --accent:#16a34a; --text:#0f172a; --muted:#64748b; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); min-height:100vh; display:flex; align-items:center; justify-content:center; padding:16px; color:var(--text); }
+  .card { background:var(--card); border-radius:20px; padding:28px 22px; width:100%; max-width:400px; box-shadow:0 20px 50px rgba(0,0,0,.4); text-align:center; }
+  h1 { margin:0 0 4px; font-size:1.5rem; }
+  .sub { color:var(--muted); margin:0 0 18px; font-size:.95rem; }
+  .price { font-size:2.2rem; font-weight:800; color:var(--accent); margin:8px 0; }
+  ul { list-style:none; padding:0; margin:0 0 18px; color:var(--muted); font-size:.92rem; }
+  li::before { content:"✓ "; color:var(--accent); font-weight:700; }
+  .seg { display:flex; gap:8px; margin-bottom:12px; }
+  .seg button { flex:1; padding:10px; border:2px solid #e2e8f0; background:#fff; border-radius:12px; font-size:.95rem; cursor:pointer; }
+  .seg button.on { border-color:var(--accent); background:#f0fdf4; font-weight:600; }
+  input { width:100%; padding:14px; font-size:1.1rem; border:2px solid #e2e8f0; border-radius:12px; margin-bottom:12px; text-align:center; }
+  .btn { width:100%; padding:15px; font-size:1.1rem; font-weight:700; border:0; border-radius:12px; background:var(--accent); color:#fff; cursor:pointer; }
+  .btn:disabled { opacity:.5; cursor:not-allowed; }
+  .err { color:#dc2626; margin-top:10px; font-size:.92rem; min-height:1em; }
+  .code { font-size:2rem; letter-spacing:2px; font-weight:800; background:#f0fdf4; border:2px dashed var(--accent); border-radius:14px; padding:16px 8px; margin:14px 0; word-break:break-all; }
+  .spin { width:44px; height:44px; border:5px solid #e2e8f0; border-top-color:var(--accent); border-radius:50%; margin:14px auto; animation:r 1s linear infinite; }
+  @keyframes r { to { transform:rotate(360deg); } }
+  .hide { display:none; }
+  .link { background:none; border:0; color:var(--muted); text-decoration:underline; cursor:pointer; margin-top:14px; font-size:.9rem; }
+</style>
+</head>
+<body>
+<div class="card">
+
+  <div id="vBuy">
+    <h1>📶 Ticket WiFi</h1>
+    <p class="sub">Connexion rapide et illimitée</p>
+    <div class="price" id="price">1000 FC</div>
+    <ul><li>Valable 1 jour (24h)</li><li>Connexion illimitée et rapide</li><li>Pas de compte à créer</li></ul>
+
+    <div class="seg">
+      <button id="mMobile" class="on" type="button">📱 Mobile Money</button>
+      <button id="mCard" type="button">💳 Carte</button>
+    </div>
+    <input id="phone" type="tel" inputmode="tel" placeholder="Numéro Mobile Money (ex : 0812345678)" autocomplete="tel">
+    <button class="btn" id="payBtn">Acheter mon ticket</button>
+    <div class="err" id="err"></div>
+  </div>
+
+  <div id="vWait" class="hide">
+    <h1>Paiement en cours…</h1>
+    <div class="spin"></div>
+    <p class="sub" id="waitMsg">Validez le paiement sur votre téléphone (code PIN).</p>
+    <p class="sub">Votre code s'affichera ici automatiquement.</p>
+    <button class="link" id="cancelWait">Retour</button>
+  </div>
+
+  <div id="vDone" class="hide">
+    <h1>✅ Paiement réussi</h1>
+    <p class="sub">Votre code WiFi :</p>
+    <div class="code" id="code"></div>
+    <button class="btn" id="copyBtn">Copier le code</button>
+    <p class="sub" style="margin-top:14px">Entrez-le sur la page de connexion WiFi. Gardez cette page : le code reste affiché si vous revenez.</p>
+    <button class="link" id="newBtn">Acheter un autre ticket</button>
+  </div>
+
+  <div id="vStock" class="hide">
+    <h1>⏳ Paiement reçu</h1>
+    <p class="sub">Les tickets sont momentanément épuisés. Votre code sera affiché ici dès qu'il est disponible. Ne fermez pas cette page et ne repayez pas.</p>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let method = 'mobile', timer = null;
+
+function show(v) { ['vBuy','vWait','vDone','vStock'].forEach(x => $(x).classList.toggle('hide', x !== v)); }
+
+async function info() {
+  try {
+    const i = await (await fetch('/api/info')).json();
+    $('price').textContent = i.price + ' FC';
+    if (i.available <= 0) { $('payBtn').disabled = true; $('payBtn').textContent = 'Tickets épuisés'; }
+  } catch {}
+}
+
+$('mMobile').onclick = () => { method = 'mobile'; $('mMobile').classList.add('on'); $('mCard').classList.remove('on'); $('phone').classList.remove('hide'); };
+$('mCard').onclick = () => { method = 'card'; $('mCard').classList.add('on'); $('mMobile').classList.remove('on'); $('phone').classList.add('hide'); };
+
+$('payBtn').onclick = async () => {
+  $('err').textContent = '';
+  $('payBtn').disabled = true;
+  try {
+    const r = await fetch('/api/pay', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ method, phone: $('phone').value }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Erreur');
+    localStorage.setItem('wifiRef', j.ref);
+    if (j.url) { location.href = j.url; return; }
+    poll(j.ref);
+  } catch (e) { $('err').textContent = e.message; }
+  $('payBtn').disabled = false;
+};
+
+function poll(ref) {
+  show('vWait');
+  clearInterval(timer);
+  let n = 0;
+  const tick = async () => {
+    n++;
+    try {
+      const j = await (await fetch('/api/order/' + encodeURIComponent(ref))).json();
+      if (j.code) { clearInterval(timer); $('code').textContent = j.code; show('vDone'); return; }
+      if (j.waitingStock) { show('vStock'); return; }
+      if (j.status === 'failed') { clearInterval(timer); localStorage.removeItem('wifiRef'); show('vBuy'); $('err').textContent = 'Paiement échoué ou annulé. Réessayez.'; return; }
+    } catch {}
+    if (n > 150) { clearInterval(timer); $('waitMsg').textContent = 'Toujours en attente… Si vous avez payé, revenez sur cette page dans quelques minutes.'; }
+  };
+  tick(); timer = setInterval(tick, 4000);
+}
+
+$('cancelWait').onclick = () => { clearInterval(timer); localStorage.removeItem('wifiRef'); show('vBuy'); };
+$('newBtn').onclick = () => { localStorage.removeItem('wifiRef'); show('vBuy'); info(); };
+$('copyBtn').onclick = async () => { try { await navigator.clipboard.writeText($('code').textContent); $('copyBtn').textContent = 'Copié ✔'; } catch { } };
+
+(function init() {
+  info();
+  const q = new URLSearchParams(location.search);
+  const ref = q.get('ref') || localStorage.getItem('wifiRef');
+  if (ref) { localStorage.setItem('wifiRef', ref); poll(ref); }
+})();
+</script>
+</body>
+</html>
